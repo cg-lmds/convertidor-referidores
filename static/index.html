@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Segmentador de Referidores — XtraCash / BOVEM</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <!-- Top Header -->
+    <header class="topbar">
+      <div class="topbar-inner">
+        <div class="brand">
+          <div class="brand-logo">XC</div>
+          <div>
+            <h1>Segmentador de Referidores</h1>
+            <p class="subtitle">Cruce de cartera, conversión a USD y generación de reportes Excel por referidor</p>
+          </div>
+        </div>
+        <div class="topbar-actions">
+          <span class="badge badge-ephemeral" title="Los archivos se procesan en memoria y se reemplazan con cada nueva carga">
+            <span class="dot"></span>
+            Sesión temporal en memoria
+          </span>
+          <button id="btnClearSession" class="btn btn-ghost hidden" type="button">
+            Limpiar datos
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <main class="container">
+      <!-- Alert / Toast container -->
+      <div id="alertBox" class="alert hidden" role="alert"></div>
+
+      <!-- Step 1: Upload & Exchange Rate -->
+      <section class="card upload-card">
+        <div class="card-header">
+          <div>
+            <h2>1. Cargar archivos y tasa del día</h2>
+            <p class="muted">Cada nueva carga reemplaza automáticamente la información temporal anterior.</p>
+          </div>
+          <span id="lastProcessedBadge" class="badge badge-neutral hidden"></span>
+        </div>
+
+        <form id="uploadForm" class="upload-form">
+          <div class="dropzones-grid">
+            <!-- DATA ORIGEN -->
+            <label class="dropzone" id="dzOrigen" for="fileOrigen">
+              <input type="file" id="fileOrigen" name="data_origen" accept=".xlsx,.xls" hidden />
+              <div class="dz-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                  <polyline points="14 2 14 8 20 8"></polyline>
+                  <line x1="12" y1="18" x2="12" y2="12"></line>
+                  <polyline points="9 15 12 12 15 15"></polyline>
+                </svg>
+              </div>
+              <div class="dz-text">
+                <strong>DATA ORIGEN (.xlsx)</strong>
+                <span id="labelOrigen" class="muted">Arrastra aquí o haz clic para seleccionar</span>
+              </div>
+            </label>
+
+            <!-- REFERIDORES -->
+            <label class="dropzone" id="dzReferidores" for="fileReferidores">
+              <input type="file" id="fileReferidores" name="referidores" accept=".xlsx,.xls" hidden />
+              <div class="dz-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                  <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+                  <circle cx="9" cy="7" r="4"></circle>
+                  <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+                  <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+                </svg>
+              </div>
+              <div class="dz-text">
+                <strong>REFERIDORES (.xlsx)</strong>
+                <span id="labelReferidores" class="muted">Arrastra aquí o haz clic para seleccionar</span>
+              </div>
+            </label>
+          </div>
+
+          <div class="rate-row">
+            <div class="rate-input-group">
+              <label for="inputTasa">Tasa del día (Bs / USD)</label>
+              <div class="rate-controls">
+                <input
+                  type="number"
+                  id="inputTasa"
+                  name="tasa"
+                  step="0.0001"
+                  min="0.0001"
+                  placeholder="Ej. 52.50"
+                  required
+                />
+                <button type="button" id="btnFetchBcv" class="btn btn-outline">
+                  Consultar BCV
+                </button>
+              </div>
+              <small id="bcvMeta" class="muted">Ingresa la tasa manualmente o consúltala desde BCV Oficial.</small>
+            </div>
+
+            <div class="submit-wrap">
+              <button type="submit" id="btnProcess" class="btn btn-primary btn-lg">
+                <span class="btn-label">Procesar y Segmentar</span>
+                <span class="spinner hidden" id="processSpinner"></span>
+              </button>
+            </div>
+          </div>
+        </form>
+      </section>
+
+      <!-- Results Section -->
+      <section id="resultsSection" class="results-section hidden">
+        <!-- KPI Cards -->
+        <div class="kpi-grid">
+          <div class="kpi-card">
+            <span class="kpi-label">Referidores Activos</span>
+            <strong class="kpi-value" id="kpiReferidores">0</strong>
+            <span class="kpi-sub" id="kpiMatchRate">—</span>
+          </div>
+          <div class="kpi-card">
+            <span class="kpi-label">Clientes Filtrados</span>
+            <strong class="kpi-value" id="kpiClientes">0</strong>
+            <span class="kpi-sub" id="kpiTotalBase">—</span>
+          </div>
+          <div class="kpi-card kpi-highlight">
+            <span class="kpi-label">Pago Mínimo Pendiente</span>
+            <strong class="kpi-value" id="kpiPagoMinimo">$0.00</strong>
+            <span class="kpi-sub" id="kpiTasaInfo">Tasa: —</span>
+          </div>
+          <div class="kpi-card">
+            <span class="kpi-label">Pago Total Pendiente</span>
+            <strong class="kpi-value" id="kpiPagoTotal">$0.00</strong>
+            <span class="kpi-sub">Equivalente en USD</span>
+          </div>
+        </div>
+
+        <!-- Filters & Bulk Actions -->
+        <div class="card controls-card">
+          <div class="controls-top">
+            <div class="toggles-row">
+              <label class="toggle">
+                <input type="checkbox" id="chkOnlyDebt" />
+                <span>Solo Pago Mínimo &gt; $0</span>
+              </label>
+              <label class="toggle">
+                <input type="checkbox" id="chkOnlyOverdue" />
+                <span>Solo Vencidos</span>
+              </label>
+              <label class="toggle">
+                <input type="checkbox" id="chkIncludeSinRef" checked />
+                <span>Incluir "Sin Referidor"</span>
+              </label>
+              <label class="toggle">
+                <input type="checkbox" id="chkIncludeTotalCol" checked />
+                <span>Incluir col. Pago Total (USD)</span>
+              </label>
+            </div>
+
+            <div class="bulk-actions">
+              <button id="btnDownloadConsolidado" class="btn btn-outline" type="button">
+                Consolidado (.XLSX)
+              </button>
+              <button id="btnDownloadZip" class="btn btn-primary" type="button">
+                Descargar Todos (.ZIP)
+              </button>
+            </div>
+          </div>
+
+          <div class="vencimientos-bar">
+            <span class="venc-label">Filtrar por vencimiento:</span>
+            <div id="vencChips" class="chips-wrap"></div>
+          </div>
+        </div>
+
+        <!-- Referidores DataTable -->
+        <div class="card table-card">
+          <div class="table-toolbar">
+            <div class="search-box">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="11" cy="11" r="8"></circle>
+                <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+              </svg>
+              <input
+                type="text"
+                id="searchReferidor"
+                placeholder="Buscar referidor por nombre..."
+                autocomplete="off"
+              />
+            </div>
+
+            <div class="table-meta-controls">
+              <label class="page-size-label">
+                Mostrar
+                <select id="pageSizeSelect">
+                  <option value="15">15</option>
+                  <option value="25" selected>25</option>
+                  <option value="50">50</option>
+                  <option value="10000">Todos</option>
+                </select>
+              </label>
+            </div>
+          </div>
+
+          <div class="table-responsive">
+            <table class="data-table" id="referidoresTable">
+              <thead>
+                <tr>
+                  <th data-sort="referidor" class="sortable">Referidor <span class="sort-icon"></span></th>
+                  <th data-sort="total_clientes" class="sortable num">Clientes <span class="sort-icon"></span></th>
+                  <th data-sort="clientes_vencidos" class="sortable num">Vencidos <span class="sort-icon"></span></th>
+                  <th data-sort="pago_minimo_usd" class="sortable num active-sort desc">Pago Mínimo (USD) <span class="sort-icon"></span></th>
+                  <th data-sort="pago_total_usd" class="sortable num">Pago Total (USD) <span class="sort-icon"></span></th>
+                  <th class="actions-col">Acciones</th>
+                </tr>
+              </thead>
+              <tbody id="referidoresTbody"></tbody>
+            </table>
+          </div>
+
+          <div class="table-footer">
+            <span id="tableCountInfo" class="muted">Mostrando 0 de 0 referidores</span>
+            <div class="pagination" id="paginationControls"></div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- Detail Preview Modal -->
+  <div id="detailModal" class="modal-backdrop hidden" role="dialog" aria-modal="true">
+    <div class="modal-dialog">
+      <div class="modal-header">
+        <div>
+          <h3 id="modalTitle">Detalle de Referidor</h3>
+          <p id="modalSubtitle" class="muted"></p>
+        </div>
+        <div class="modal-header-actions">
+          <button id="modalDownloadBtn" class="btn btn-primary btn-sm" type="button">
+            Descargar Excel
+          </button>
+          <button id="modalCloseBtn" class="btn-icon" type="button" aria-label="Cerrar">&times;</button>
+        </div>
+      </div>
+
+      <div class="modal-toolbar">
+        <div class="search-box search-box-sm">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="11" cy="11" r="8"></circle>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+          </svg>
+          <input type="text" id="modalSearch" placeholder="Buscar por documento, nombre, correo o vencimiento..." />
+        </div>
+      </div>
+
+      <div class="modal-body">
+        <div class="table-responsive">
+          <table class="data-table data-table-compact">
+            <thead>
+              <tr>
+                <th>Documento de Identidad</th>
+                <th>Nombre del Cliente</th>
+                <th>Teléfono</th>
+                <th>Email</th>
+                <th class="num">Pago Mínimo (USD)</th>
+                <th class="num modal-col-total">Pago Total (USD)</th>
+                <th>Tipo de Vencimiento</th>
+                <th>Referidor</th>
+              </tr>
+            </thead>
+            <tbody id="modalTbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
